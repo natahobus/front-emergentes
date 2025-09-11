@@ -1,82 +1,149 @@
-import React, { useEffect, useState } from 'react'
-import api from '../services/api'
+import React, { useEffect, useState } from "react";
+import api from "../services/api";
+import { Dumbbell, Loader2, AlertCircle, Search } from "lucide-react";
 
-type Treino = { id: number; nome: string; descricao?: string; aluno?: any; instrutor?: any; exercicios?: any[] }
+type Exercicio = {
+  id: number;
+  nome: string;
+  series: number;
+  repeticoes: number;
+};
+
+type Treino = {
+  id: number;
+  nome: string;
+  descricao?: string;
+  instrutor?: { nome: string };
+  exercicios?: Exercicio[];
+};
 
 export default function Treinos() {
-  const [treinos, setTreinos] = useState<Treino[]>([])
-  const [alunoId, setAlunoId] = useState('')
-  const [nome, setNome] = useState('')
-  const [descricao, setDescricao] = useState('')
-  const [instrutorId, setInstrutorId] = useState('')
+  const [treinos, setTreinos] = useState<Treino[]>([]);
+  const [filtered, setFiltered] = useState<Treino[]>([]);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState("");
 
-  async function loadAll() {
-    try {
-      const resp = await api.get('/treinos')
-      setTreinos(resp.data)
-    } catch (err) { console.error(err) }
-  }
+  useEffect(() => {
+    async function loadTreinos() {
+      try {
+        const user = localStorage.getItem("usuario");
+        if (!user) {
+          setErro("Usuário não autenticado");
+          return;
+        }
 
-  async function loadByAluno() {
-    if (!alunoId) return loadAll()
-    try {
-      const resp = await api.get(`/treinos/${alunoId}`)
-      setTreinos(resp.data)
-    } catch (err) { console.error(err) }
-  }
+        const aluno = JSON.parse(user);
+        const resp = await api.get(`/treinos/${aluno.id}`);
+        setTreinos(resp.data);
+        setFiltered(resp.data);
+      } catch (err) {
+        console.error(err);
+        setErro("Erro ao carregar treinos");
+      } finally {
+        setLoading(false);
+      }
+    }
 
-  useEffect(()=>{ loadAll() },[])
+    loadTreinos();
+  }, []);
 
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault()
-    try {
-      await api.post('/treinos', { nome, descricao, alunoId: Number(alunoId), instrutorId: Number(instrutorId) })
-      setNome(''); setDescricao(''); setAlunoId(''); setInstrutorId('')
-      loadAll()
-    } catch (err) { console.error(err) }
-  }
+  // Sempre que search mudar, aplica filtro
+  useEffect(() => {
+    if (!search.trim()) {
+      setFiltered(treinos);
+    } else {
+      const termo = search.toLowerCase();
+      setFiltered(
+        treinos.filter(
+          (t) =>
+            t.nome.toLowerCase().includes(termo) ||
+            t.descricao?.toLowerCase().includes(termo) ||
+            t.instrutor?.nome.toLowerCase().includes(termo)
+        )
+      );
+    }
+  }, [search, treinos]);
+
+  if (loading)
+    return (
+      <div className="flex justify-center items-center h-64 text-blue-600">
+        <Loader2 className="animate-spin w-8 h-8" />
+        <span className="ml-2">Carregando treinos...</span>
+      </div>
+    );
+
+  if (erro)
+    return (
+      <div className="flex justify-center items-center h-64 text-red-600">
+        <AlertCircle className="w-6 h-6 mr-2" />
+        {erro}
+      </div>
+    );
 
   return (
     <div>
-      <h1 className="text-2xl mb-4">Treinos</h1>
-      <div className="grid md:grid-cols-2 gap-6">
-        <div className="bg-white p-4 rounded shadow">
-          <h2 className="font-semibold">Criar Treino</h2>
-          <form onSubmit={handleCreate} className="space-y-3 mt-2">
-            <div><label className="text-sm">Nome</label><input value={nome} onChange={e=>setNome(e.target.value)} className="w-full border px-2 py-1 rounded" /></div>
-            <div><label className="text-sm">Descrição</label><input value={descricao} onChange={e=>setDescricao(e.target.value)} className="w-full border px-2 py-1 rounded" /></div>
-            <div><label className="text-sm">AlunoId</label><input value={alunoId} onChange={e=>setAlunoId(e.target.value)} className="w-full border px-2 py-1 rounded" /></div>
-            <div><label className="text-sm">InstrutorId</label><input value={instrutorId} onChange={e=>setInstrutorId(e.target.value)} className="w-full border px-2 py-1 rounded" /></div>
-            <button className="bg-green-600 text-white px-3 py-1 rounded">Criar</button>
-          </form>
-          <div className="mt-4">
-            <label className="text-sm">Buscar treinos por alunoId</label>
-            <div className="flex gap-2 mt-2">
-              <input value={alunoId} onChange={e=>setAlunoId(e.target.value)} className="border px-2 py-1 rounded" />
-              <button onClick={loadByAluno} className="bg-blue-600 text-white px-3 py-1 rounded">Buscar</button>
-            </div>
-          </div>
-        </div>
+      <h1 className="text-3xl font-bold mb-6 text-gray-800">📋 Meus Treinos</h1>
 
-        <div className="bg-white p-4 rounded shadow">
-          <h2 className="font-semibold mb-2">Lista de Treinos</h2>
-          <ul className="space-y-2">
-            {treinos.map(t=>(
-              <li key={t.id} className="border p-2 rounded">
-                <div className="font-semibold">{t.nome} (#{t.id})</div>
-                <div className="text-sm">{t.descricao}</div>
-                <div className="text-xs text-gray-600">Aluno: {t.aluno?.nome || '-' } | Instrutor: {t.instrutor?.nome || '-'}</div>
-                <div className="mt-1">
-                  Exercícios:
-                  <ul className="list-disc ml-5">
-                    {t.exercicios?.map((ex:any)=> <li key={ex.id}>{ex.nome} — {ex.series}x{ex.repeticoes}</li>)}
-                  </ul>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
+      {/* Campo de busca */}
+      <div className="mb-6 relative">
+        <input
+          type="text"
+          placeholder="Buscar treino por nome, descrição ou instrutor..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full border rounded-lg px-4 py-2 pl-10 focus:ring focus:ring-blue-300"
+        />
+        <Search className="absolute left-3 top-2.5 text-gray-400 w-5 h-5" />
       </div>
+
+      {filtered.length === 0 ? (
+        <p className="text-gray-600">Nenhum treino encontrado.</p>
+      ) : (
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filtered.map((t) => (
+            <div
+              key={t.id}
+              className="bg-white rounded-xl shadow-lg p-5 border hover:shadow-xl transition"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-xl font-semibold text-blue-700 flex items-center gap-2">
+                  <Dumbbell className="w-5 h-5" /> {t.nome}
+                </h2>
+                <span className="text-sm text-gray-500"></span>
+              </div>
+
+              {t.descricao && (
+                <p className="text-gray-600 text-sm mb-2">{t.descricao}</p>
+              )}
+
+              <p className="text-xs text-gray-500 mb-3">
+                Instrutor:{" "}
+                <span className="font-medium">
+                  {t.instrutor?.nome || "Não atribuído"}
+                </span>
+              </p>
+
+              <div>
+                <p className="font-semibold text-gray-700 mb-1">Exercícios:</p>
+                <ul className="space-y-1">
+                  {t.exercicios?.map((ex) => (
+                    <li
+                      key={ex.id}
+                      className="flex justify-between bg-gray-50 p-2 rounded-md text-sm"
+                    >
+                      <span>{ex.nome}</span>
+                      <span className="text-gray-600">
+                        {ex.series}x{ex.repeticoes}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
-  )
+  );
 }
